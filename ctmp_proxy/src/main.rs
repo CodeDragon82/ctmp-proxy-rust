@@ -52,6 +52,10 @@ fn main() {
         match source_socket.accept() {
             Ok((stream, socket_address)) => {
                 println!("New source connection: {}", socket_address.port());
+
+                // Don't block the thread when reading data (i.e., don't wait).
+                stream.set_nonblocking(true);
+
                 source_client = Some(stream);
             },
             Err(e) => {}
