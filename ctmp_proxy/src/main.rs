@@ -45,6 +45,7 @@ fn main() {
     let destination_socket: TcpListener = create_listener(DESTINATION_PORT);
 
     let mut source_client: Option<TcpStream> = None;
+    let mut destination_clients: Vec<TcpStream> =  Vec::new();
 
     let mut buffer: [u8; 70000] = [0; 70000];
 
@@ -62,7 +63,10 @@ fn main() {
         }
 
         match destination_socket.accept() {
-            Ok((stream, socket_addres)) => println!("New destination connection: {}", socket_addres.port()),
+            Ok((stream, socket_addres)) => {
+                println!("New destination connection: {}", socket_addres.port());
+                destination_clients.push(stream);
+            },
             Err(e) => {}
         }
 
