@@ -1,6 +1,6 @@
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::process;
+use std::{process, usize};
 
 const LOCALHOST: &str = "127.0.0.1";
 const SOURCE_PORT: &str = "33333";
@@ -32,11 +32,26 @@ fn create_listener(port: &str) -> TcpListener {
     };
 }
 
-fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) {
+fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) -> usize {
     match source.read(buffer) {
-        Ok(0) => {},
-        Ok(byte_count) => println!("{} bytes read from source", byte_count),
-        Err(e) => eprintln!("Failed to read from source: {}", e)
+        Ok(0) => return 0,
+        Ok(byte_count) => {
+            println!("{} bytes read from source", byte_count);
+            return byte_count;
+        },
+        Err(e) => {
+            eprintln!("Failed to read from source: {}", e);
+            return 0;
+        }
+    }
+}
+
+fn broadcast_to_destinations(destination_clients: &mut Vec<TcpStream>, buffer: &[u8], buffer_size: usize) {
+    for destination_client in &mut destination_clients.iter_mut() {
+        match destination_client.write_all(&buffer[..buffer_size]) {
+            Ok(_) => println!("Sending {} bytes to {}", buffer_size, destination_client.local_addr().unwrap().port()),
+            Err(_) => eprintln!("Failed to send data to {}", destination_client.local_addr().unwrap().port()),
+        }
     }
 }
 
@@ -72,7 +87,12 @@ fn main() {
 
         // Attempt to read data from source client if connected.
         match source_client.as_mut() {
-            Some(source) => read_from_source(source, &mut buffer),
+            Some(source) => {
+                let byte_count= read_from_source(source, &mut buffer);
+                if byte_count > 0 {
+                    broadcast_to_destinations(&mut destination_clients, &buffer, byte_count);
+                }
+            },
             None => {}
         }
     }
