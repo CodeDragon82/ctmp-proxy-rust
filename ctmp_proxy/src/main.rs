@@ -33,15 +33,40 @@ fn create_listener(port: &str) -> TcpListener {
 }
 
 fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) -> usize {
-    match source.read(buffer) {
-        Ok(0) => return 0,
-        Ok(byte_count) => {
-            println!("{} bytes read from source", byte_count);
-            return byte_count;
-        },
-        Err(e) => {
-            eprintln!("Failed to read from source: {}", e);
-            return 0;
+    buffer.fill(0);
+    let mut total_bytes = 0;
+
+    loop {
+        match source.read(&mut buffer[total_bytes..]) {
+            // If the packet is incomplete but there's no more data from the source, return false.
+            Ok(0) => return 0,
+            Ok(bytes_read) => {
+                println!("{} bytes read from source", bytes_read);
+                total_bytes += bytes_read;
+
+                // If the packet data is less than the header length, keep reading.
+                if total_bytes < 8 {
+                    continue;
+                }
+
+                // If the magic byte is wrong, stop reading and return false.
+                if buffer[0] != 0xCC {
+                    eprintln!("Invalid magic byte: {}", buffer[0]);
+                    return 0;
+                }
+
+                let expected_length: usize = u16::from_be_bytes([buffer[2], buffer[3]]) as usize;
+
+                if total_bytes - 8 == expected_length {
+                    println!("Received {} byte packet from source", total_bytes);
+                    return total_bytes;
+                }
+
+                // If the total bytes read doesn't match the expected length, keep reading.
+            },
+            Err(e) => {
+                return 0;
+            }
         }
     }
 }
