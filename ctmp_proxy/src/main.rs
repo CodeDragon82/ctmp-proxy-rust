@@ -32,6 +32,9 @@ fn create_listener(port: &str) -> TcpListener {
     };
 }
 
+/// Calculates the packet's checksum based on the 'Internet Checksum' standard
+/// defined in RFC 1071. Checksum is calculated with `0xCCCC` replacing checksum 
+/// field.
 fn calculate_checksum(packet_data: &[u8], packet_size: usize) -> u16 {
     let mut sum: u32 = 0;
 
@@ -58,6 +61,8 @@ fn calculate_checksum(packet_data: &[u8], packet_size: usize) -> u16 {
     return !sum as u16;
 }
 
+/// Calculates the checksum of the packet and compares it to the expected
+/// checksum defined within the packet.
 fn check_checksum(packet_data: &[u8], packet_size: usize) -> bool {
     let expected_checksum: usize = u16::from_be_bytes([packet_data[4], packet_data[5]]) as usize;
     let actual_checksum: usize = calculate_checksum(packet_data, packet_size) as usize;
@@ -70,6 +75,15 @@ fn check_checksum(packet_data: &[u8], packet_size: usize) -> bool {
     return false;
 }
 
+
+/// Reads from the source client until a full valid packet is in the `buffer`.
+/// 
+/// Returns the number of bytes read.
+/// 
+/// Returns false (i.e., `0`) if it fails to read a valid packet:
+///  - Packet is incomplete, but there's no most data to read.
+///  - Packet magic byte is incorrect.
+///  - Packet checksum field doesn't match the calculated checksum.
 fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) -> usize {
     buffer.fill(0);
     let mut total_bytes = 0;
@@ -115,6 +129,7 @@ fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) -> usize {
     }
 }
 
+/// Send the packet from the `buffer` to every `destination_client`.
 fn broadcast_to_destinations(destination_clients: &mut Vec<TcpStream>, buffer: &[u8], buffer_size: usize) {
     for destination_client in &mut destination_clients.iter_mut() {
         match destination_client.write_all(&buffer[..buffer_size]) {
