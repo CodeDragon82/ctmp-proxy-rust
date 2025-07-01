@@ -32,6 +32,44 @@ fn create_listener(port: &str) -> TcpListener {
     };
 }
 
+fn calculate_checksum(packet_data: &[u8], packet_size: usize) -> u16 {
+    let mut sum: u32 = 0;
+
+    for i in (0..packet_size).step_by(2) {
+        let mut word:u16 = (packet_data[i] as u16) << 8;
+
+        if i + 1 < packet_size {
+            word |= packet_data[i + 1] as u16;
+        }
+
+        // Ignore the checksum field.
+        if i == 4 {
+            word = 0xCCCC;
+        }
+
+        sum += word as u32;
+
+        // Fold the carry bits.
+        if sum > 0xFFFF {
+            sum = (sum & 0xFFFF) + 1;
+        }
+    }
+
+    return !sum as u16;
+}
+
+fn check_checksum(packet_data: &[u8], packet_size: usize) -> bool {
+    let expected_checksum: usize = u16::from_be_bytes([packet_data[4], packet_data[5]]) as usize;
+    let actual_checksum: usize = calculate_checksum(packet_data, packet_size) as usize;
+
+    if expected_checksum == actual_checksum {
+        return true
+    }
+
+    eprintln!("Wrong checksum! Expected: {}, Actual: {}", expected_checksum, actual_checksum);
+    return false;
+}
+
 fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) -> usize {
     buffer.fill(0);
     let mut total_bytes = 0;
@@ -57,12 +95,18 @@ fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) -> usize {
 
                 let expected_length: usize = u16::from_be_bytes([buffer[2], buffer[3]]) as usize;
 
-                if total_bytes - 8 == expected_length {
+                // If the total bytes read doesn't match the expected length, keep reading.
+                if total_bytes - 8 != expected_length {
                     println!("Received {} byte packet from source", total_bytes);
-                    return total_bytes;
+                    continue;
                 }
 
-                // If the total bytes read doesn't match the expected length, keep reading.
+                // If the packet is 'sensitive' and the checksum is wrong, return false.
+                if buffer[1] & 0x40 > 0 && !check_checksum(&buffer, total_bytes) {
+                    return 0;
+                }
+                
+                return total_bytes;
             },
             Err(e) => {
                 return 0;
