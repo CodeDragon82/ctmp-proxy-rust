@@ -147,8 +147,8 @@ fn main() {
         }
 
         match destination_socket.accept() {
-            Ok((stream, socket_addres)) => {
-                println!("New destination connection: {}", socket_addres.port());
+            Ok((stream, socket_address)) => {
+                println!("New destination connection: {}", socket_address.port());
                 destination_clients.push(stream);
             },
             Err(e) => {}
