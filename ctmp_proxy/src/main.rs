@@ -1,4 +1,4 @@
-use std::io::{Read, Write};
+use std::io::{Read, Write, Error};
 use std::net::{TcpListener, TcpStream};
 use std::{process, usize};
 
@@ -7,29 +7,22 @@ const SOURCE_PORT: &str = "33333";
 const DESTINATION_PORT: &str = "44444";
 
 fn create_listener(port: &str) -> TcpListener {
-    let socket_address = format!("{}:{}", LOCALHOST, port);
-    
-    match TcpListener::bind(&socket_address) {
-        Ok(listener) => {
-            println!("Opened listener: {}", &socket_address);
+    try_create_listener(port).unwrap_or_else(|e| {
+        eprintln!("Failed to create socket on port {}: {}", port, e);
+        process::exit(1);
+    })
+}
 
-            // Turn on non-blocking mode; accept() should NOT block the thread.
-            match listener.set_nonblocking(true) {
-                Ok(_) => {
-                    println!("Socket non-blocking set.");
-                    return listener;
-                }
-                Err(e) => {
-                    eprintln!("Failed to set non-blocking mode: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to bind to {}: {}", &socket_address, e);
-            process::exit(1);
-        }
-    };
+fn try_create_listener(port: &str) -> Result<TcpListener, Error> {
+    let socket_address = format!("{}:{}", LOCALHOST, port);
+    let listener = TcpListener::bind(&socket_address)?;
+
+    println!("Opened listener: {}", socket_address);
+
+    listener.set_nonblocking(true)?;
+    println!("Socket non-blocking set.");
+
+    Ok(listener)
 }
 
 /// Calculates the packet's checksum based on the 'Internet Checksum' standard
