@@ -1,4 +1,4 @@
-use std::io::{Read, Write, Error};
+use std::io::{Read, Write, Error, ErrorKind};
 use std::net::{TcpListener, TcpStream};
 use std::{process, usize};
 
@@ -77,48 +77,45 @@ fn check_checksum(packet_data: &[u8], packet_size: usize) -> bool {
 ///  - Packet is incomplete, but there's no most data to read.
 ///  - Packet magic byte is incorrect.
 ///  - Packet checksum field doesn't match the calculated checksum.
-fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) -> usize {
+fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) -> Result<usize, Error> {
     buffer.fill(0);
     let mut total_bytes = 0;
 
     loop {
-        match source.read(&mut buffer[total_bytes..]) {
-            // If the packet is incomplete but there's no more data from the source, return false.
-            Ok(0) => return 0,
-            Ok(bytes_read) => {
-                println!("{} bytes read from source", bytes_read);
-                total_bytes += bytes_read;
+        let bytes_read: usize = source.read(&mut buffer[total_bytes..])?;
 
-                // If the packet data is less than the header length, keep reading.
-                if total_bytes < 8 {
-                    continue;
-                }
-
-                // If the magic byte is wrong, stop reading and return false.
-                if buffer[0] != 0xCC {
-                    eprintln!("Invalid magic byte: {}", buffer[0]);
-                    return 0;
-                }
-
-                let expected_length: usize = u16::from_be_bytes([buffer[2], buffer[3]]) as usize;
-
-                // If the total bytes read doesn't match the expected length, keep reading.
-                if total_bytes - 8 != expected_length {
-                    println!("Received {} byte packet from source", total_bytes);
-                    continue;
-                }
-
-                // If the packet is 'sensitive' and the checksum is wrong, return false.
-                if buffer[1] & 0x40 > 0 && !check_checksum(&buffer, total_bytes) {
-                    return 0;
-                }
-                
-                return total_bytes;
-            },
-            Err(e) => {
-                return 0;
-            }
+        // If the packet is incomplete but there's no more data from the source, return false.
+        if bytes_read == 0 {
+            return Err(Error::new(ErrorKind::Other, "No more data to read and packet is incomplete.".to_owned()));
         }
+
+        println!("{} bytes read from source", bytes_read);
+        total_bytes += bytes_read;
+
+        // If the packet data is less than the header length, keep reading.
+        if total_bytes < 8 {
+            continue;
+        }
+
+        // If the magic byte is wrong, stop reading and return false.
+        if buffer[0] != 0xCC {
+            return Err(Error::new(ErrorKind::Other, format!("Invalid magic byte: {}", buffer[0]).to_owned()));
+        }
+
+        let expected_length: usize = u16::from_be_bytes([buffer[2], buffer[3]]) as usize;
+
+        // If the total bytes read doesn't match the expected length, keep reading.
+        if total_bytes - 8 != expected_length {
+            println!("Received {} byte packet from source", total_bytes);
+            continue;
+        }
+
+        // If the packet is 'sensitive' and the checksum is wrong, return false.
+        if buffer[1] & 0x40 > 0 && !check_checksum(&buffer, total_bytes) {
+            return Err(Error::new(ErrorKind::Other, "Checksum is wrong!".to_owned()));
+        }
+            
+        return Ok(total_bytes);
     }
 }
 
@@ -163,14 +160,11 @@ fn main() {
         }
 
         // Attempt to read data from source client if connected.
-        match source_client.as_mut() {
-            Some(source) => {
-                let byte_count= read_from_source(source, &mut buffer);
-                if byte_count > 0 {
-                    broadcast_to_destinations(&mut destination_clients, &buffer, byte_count);
-                }
-            },
-            None => {}
+        if let Some(source) = source_client.as_mut() {
+            match read_from_source(source, &mut buffer) {
+                Ok(byte_count) => broadcast_to_destinations(&mut destination_clients, &buffer, byte_count),
+                Err(e) => eprintln!("{}", e),
+            }
         }
     }
 }
