@@ -73,7 +73,7 @@ fn check_checksum(packet_data: &[u8], packet_size: usize) -> bool {
 /// 
 /// Returns the number of bytes read.
 /// 
-/// Returns false (i.e., `0`) if it fails to read a valid packet:
+/// Returns error if it fails to read a valid packet:
 ///  - Packet is incomplete, but there's no most data to read.
 ///  - Packet magic byte is incorrect.
 ///  - Packet checksum field doesn't match the calculated checksum.
@@ -84,7 +84,7 @@ fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) -> Result<usize, 
     loop {
         let bytes_read: usize = source.read(&mut buffer[total_bytes..])?;
 
-        // If the packet is incomplete but there's no more data from the source, return false.
+        // If the packet is incomplete but there's no more data from the source, return error.
         if bytes_read == 0 {
             return Err(Error::new(ErrorKind::Other, "No more data to read and packet is incomplete.".to_owned()));
         }
@@ -97,7 +97,7 @@ fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) -> Result<usize, 
             continue;
         }
 
-        // If the magic byte is wrong, stop reading and return false.
+        // If the magic byte is wrong, stop reading and return error.
         if buffer[0] != 0xCC {
             return Err(Error::new(ErrorKind::Other, format!("Invalid magic byte: {}", buffer[0]).to_owned()));
         }
@@ -110,7 +110,7 @@ fn read_from_source(source: &mut TcpStream, buffer: &mut [u8]) -> Result<usize, 
             continue;
         }
 
-        // If the packet is 'sensitive' and the checksum is wrong, return false.
+        // If the packet is 'sensitive' and the checksum is wrong, return error.
         if buffer[1] & 0x40 > 0 && !check_checksum(&buffer, total_bytes) {
             return Err(Error::new(ErrorKind::Other, "Checksum is wrong!".to_owned()));
         }
